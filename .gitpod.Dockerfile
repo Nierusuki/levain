@@ -7,4 +7,4 @@ FROM gitpod/workspace-full
 # More information: https://www.gitpod.io/docs/config-docker/
 
 # Deno
-RUN curl -fsSL https://deno.land/x/install/install.sh | sh
+RUN curl -fsSL https://deno.land/x/install/install.sh | sh && export PATH=$HOME/.deno/bin:$PATH
