@@ -5,6 +5,7 @@ import {parseArgs} from "./lib/parse_args.ts";
 import {Timer} from "./lib/timer.ts";
 import LevainCli from "./levain_cli.ts";
 import CliUtil from "./lib/cli_util.ts";
+import { I18N, __ } from './lib/i18n.ts';
 
 export default class Levain {
     logFiles: string[] = [];
@@ -18,7 +19,8 @@ export default class Levain {
         try {
             this.myArgs = parseArgs(cmdArgs, {
                 stringOnce: [
-                    "email-domain"
+                    "email-domain",
+                    "locale"
                 ],
                 stringMany: [
                     "levainHome",
@@ -37,6 +39,7 @@ export default class Levain {
                 ]
             });
 
+            I18N.setup(this.myArgs.locale);
             await this.prepareLogs(this.myArgs);
 
             log.info("");
@@ -59,19 +62,19 @@ export default class Levain {
             this.logger?.showLogFiles(this.logFiles);
 
             log.info("");
-            log.info(`Levain ran in ${this.timer.humanize()}`)
+            log.info(__`Levain ran in ${this.timer.humanize()}`)
             this.logger?.flush()
 
             if (this.error) {
-                log.error('execution FAILED')
+                log.error(__('execution FAILED'))
             } else {
-                log.info('execution SUCCESS')
+                log.info(__('execution SUCCESS'))
             }
 
             if (this.error || (this.myArgs && this.myArgs["wait-after-end"])) {
                 console.log("");
-                prompt("Hit ENTER to finish");
-                console.log("Bye!");
+                prompt(__("Hit ENTER to finish"));
+                console.log(__("Bye!"));
             }
         }
         return this.logger
@@ -81,7 +84,7 @@ export default class Levain {
         this.logFiles = this.getLogFiles(myArgs['add-log'], myArgs['add-log-dir'])
         this.logger = await ConsoleAndFileLogger.setup(this.logFiles);
         log.info('')
-        log.info('Hi!')
+        log.info(__('Hi!'))
         this.logger.showLogFiles(this.logFiles);
         if (myArgs['add-log'] || myArgs['add-log-dir']) {
             CliUtil.askToContinue()
