@@ -73,10 +73,10 @@ export default class Levain {
 
             if (this.error || (this.myArgs && this.myArgs["wait-after-end"])) {
                 console.log("");
-                prompt(__("Hit ENTER to finish"));
-                console.log(__("Bye!"));
+                prompt("Hit ENTER to finish");
             }
         }
+
         return this.logger
     }
 
@@ -114,4 +114,5 @@ export default class Levain {
 // https://deno.land/manual/tools/script_installer
 if (import.meta.main) {
     await new Levain().runLevinWithLog(Deno.args);
+    console.log(__("Bye!"));
 }
