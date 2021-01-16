@@ -13,13 +13,19 @@ export default class MockRepository extends AbstractRepository {
         super();
     }
 
+    async init(): Promise<void> {
+    }
+
+    invalidatePackages() {
+    }
+
     resolvePackage(packageName: string): Package | undefined {
         return this.packages.find(pkg => pkg.name === packageName);
     }
 
     readonly absoluteURI = 'mockURI';
 
-    listPackages(rootDirOnly?: boolean): Array<Package> {
+    listPackages(): Array<Package> {
         return this.packages;
     }
 }

@@ -2,6 +2,7 @@ import * as log from "https://deno.land/std/log/mod.ts";
 import * as path from "https://deno.land/std/path/mod.ts";
 import {ensureDirSync, existsSync,} from "https://deno.land/std/fs/mod.ts";
 import OsUtils from './os_utils.ts';
+import DateUtils from './date_utils.ts';
 
 import ProgressBar from "https://deno.land/x/progress@v1.1.4/mod.ts";
 
@@ -36,12 +37,12 @@ export default class FileUtils {
                 return true
             } catch (e) {
                 if (e.name != 'PermissionDenied') {
-                    log.warning(`Error reading ${filePath}`)
-                    log.warning(e)
+                    log.debug(`Error reading ${filePath}`)
                 }
                 return false
             }
         }
+
         const bitwisePermission = 0b100_000_000;
         return this.checkBitwisePermission(filePath, bitwisePermission);
     }
@@ -94,6 +95,11 @@ export default class FileUtils {
         return fileInfo.isDirectory
     }
 
+    static isFile(filePath: string) {
+        const fileInfo = this.getFileInfoSync(filePath);
+        return fileInfo.isFile
+    }
+
     static canCreateTempFileInDir(dir: string): boolean {
         try {
             const options = {
@@ -111,25 +117,93 @@ export default class FileUtils {
     }
 
     static async copyWithProgress(srcFile: string, dstFile: string) {
-        const resolvedSrc = path.resolve(srcFile)
-        log.debug(`reading ${resolvedSrc}`)
-        let r = new FileReader(resolvedSrc);
+        let tries = 0
 
-        const resolvedDst = path.resolve(dstFile)
-        const dstDir = path.dirname(resolvedDst)
-        ensureDirSync(dstDir)
-        log.debug(`writing to ${resolvedDst}`)
-        let w = new FileWriter(resolvedDst, r.progressbar);
+        while (tries < 3) {
+            tries++
 
-        let size = await Deno.copy(r, w);
-        await r.close();
-        await w.close();
+            try {
+                const resolvedSrc = path.resolve(srcFile)
+                log.debug(`${tries} - reading ${resolvedSrc}`)
+                let r = new FileReader(resolvedSrc);
+        
+                const resolvedDst = path.resolve(dstFile)
+                const dstDir = path.dirname(resolvedDst)
+
+                if (existsSync(resolvedDst)) {
+                    log.debug(`${tries} - removing ${resolvedDst}`)
+                    Deno.removeSync(resolvedDst)
+                }
+
+                ensureDirSync(dstDir)
+                log.debug(`${tries} - writing to ${resolvedDst}`)
+                let w = new FileWriter(resolvedDst, r.progressbar);
+        
+                let size = await Deno.copy(r, w);
+
+                log.debug(`${tries} - closing ${resolvedSrc}`)
+                await r.close();
+
+                log.debug(`${tries} - closing ${resolvedDst}`)
+                await w.close();
+
+                const srcInfo = Deno.statSync(resolvedSrc);
+                const dstInfo = Deno.statSync(resolvedDst);
+
+                // Check size
+                if (srcInfo.size != dstInfo.size) {
+                    throw Error(`Copy size does not match ${dstInfo.size} != ${srcInfo.size}`)
+                }
+                log.debug(`Size ok for ${resolvedDst}`)
+
+                // Preserve timestamps
+                if (srcInfo.atime instanceof Date && srcInfo.mtime instanceof Date) {
+                    Deno.utimeSync(dstFile, srcInfo.atime, srcInfo.mtime)
+                    log.debug(`Timestamps preserved - ${resolvedDst}`)
+                } else {
+                    log.error(`Could not preserve timestamps - ${resolvedDst}`)
+                }
+
+                return;
+            } catch (error) {
+                log.info("")
+                log.error(`Error ${error}`)
+            }
+        }
+
+        throw Error(`Unable to copy ${srcFile} to ${dstFile}`)
     }
 
     static getSize(path: string) {
         const stat = Deno.statSync(path)
         const size = stat.size
         return size
+    }
+
+    static throwIfNotExists(filePath: string) {
+        if (!existsSync(filePath)) {
+            throw new Deno.errors.NotFound(`File ${filePath} does not exist`)
+        }
+    }
+
+    static createBackup(filename: string): string | undefined {
+        if (!existsSync(filename)) {
+            return undefined;
+        }
+
+        let now = new Date();
+        let bkp = "";
+
+        do
+            bkp = filename + "." + DateUtils.dateTag(now) + "." + DateUtils.timeTagWithMillis('', now) + ".bkp";
+        while (existsSync(bkp))
+
+        Deno.copyFileSync(filename, bkp);
+        return bkp;
+    }
+
+    static exists(path: string): boolean {
+        return existsSync(path);
     }
 }
 

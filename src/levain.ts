@@ -20,7 +20,9 @@ export default class Levain {
             this.myArgs = parseArgs(cmdArgs, {
                 stringOnce: [
                     "email-domain",
-                    "locale"
+                    "locale",
+                    "levainCache",
+                    "shellPath"
                 ],
                 stringMany: [
                     "levainHome",

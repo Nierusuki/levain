@@ -12,11 +12,30 @@ export default class ChainRepository extends AbstractRepository {
     ) {
         super();
         this.name = `chainRepo for ${this.repositories?.map(repo => repo.name).join(', ')}`;
-        this.packages = this.listPackages();
     }
 
     readonly name;
-    packages: Array<Package>;
+    packages: Array<Package> = [];
+
+    async init(): Promise<void> {
+        if (!this.repositories) {
+            return
+        }
+
+        for (let repo of this.repositories) {
+            await repo.init()
+        }
+
+        this.packages = this.listPackages()
+    }
+
+    invalidatePackages() {
+        for (let repo of this.repositories) {
+            repo.invalidatePackages()
+        }
+
+        this.packages = this.listPackages()
+    }
 
     get absoluteURI(): string {
         return this.name;
@@ -37,9 +56,9 @@ export default class ChainRepository extends AbstractRepository {
         return undefined;
     }
 
-    listPackages(rootDirOnly: boolean = false): Array<Package> {
+    listPackages(): Array<Package> {
         return this.repositories
-            .flatMap(repo => repo.listPackages(rootDirOnly))
+            .flatMap(repo => repo.listPackages())
             .reduce((uniquePkgs, pkg) =>
                     uniquePkgs.find(includedPkg => includedPkg.name === pkg.name)
                         ? uniquePkgs

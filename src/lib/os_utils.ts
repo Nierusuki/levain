@@ -1,13 +1,19 @@
 import * as log from "https://deno.land/std/log/mod.ts";
+import * as path from "https://deno.land/std/path/mod.ts";
+import Config from "./config.ts";
+import FileUtils from "./file_utils.ts";
 import {envChain} from "./utils.ts";
 
 export default class OsUtils {
+
     static get tempDir(): string {
-        const tempDirEnvVars = ['TEMP', 'TMPDIR'];
+        const tempDirEnvVars = ['TEMP', 'TMPDIR', 'TMP'];
         const tempDir = envChain(...tempDirEnvVars);
         if (!tempDir) {
-            throw `TempDir not found. Looked for env vars ${tempDirEnvVars.join()}`
+            //throw `TempDir not found. Looked for env vars ${tempDirEnvVars.join()}`
+            return "/tmp";
         }
+
         return tempDir
     }
 
@@ -55,6 +61,15 @@ export default class OsUtils {
         await this.runAndLog(`setx ${key} ${value}`)
     }
 
+    static async addPathPermanent(newPathItem: any, config: Config) {
+        OsUtils.onlyInWindows()
+        const userPathCMD = path.resolve(config.levainSrcDir, 'src', 'userPath.cmd')
+        FileUtils.throwIfNotExists(userPathCMD)
+        const resolvedPathItem = path.resolve(newPathItem);
+        FileUtils.throwIfNotExists(resolvedPathItem)
+        await this.runAndLog(`${userPathCMD} ${resolvedPathItem}`)
+    }
+
     static async runAndLog(command: string): Promise<void> {
         log.debug(`runAndLog\n${command}`)
         let args = command.split(" ");
@@ -93,7 +108,9 @@ export default class OsUtils {
     static async clearConsole() {
         const cmdLine = OsUtils.isWindows() ? 'cmd /c cls' : 'clear';
         const cmd = cmdLine.split(' ')
-        await Deno.run({cmd})
+        let proc = Deno.run({cmd})
+        await proc.status();
+        proc.close();
     }
 
     static makeReadOnly(path: string) {

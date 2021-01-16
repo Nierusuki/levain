@@ -1,3 +1,4 @@
+import Config from "../config.ts";
 import Package from "../package/package.ts";
 
 export default interface Repository {
@@ -7,7 +8,11 @@ export default interface Repository {
 
     readonly absoluteURI: string;
 
+    init(): void;
+
+    invalidatePackages(): void;
+
     resolvePackage(packageName: string): Package | undefined;
 
-    listPackages(rootDirOnly?: boolean): Array<Package>;
+    listPackages(): Array<Package>;
 }

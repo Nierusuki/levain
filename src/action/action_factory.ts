@@ -1,5 +1,5 @@
 import Action from "./action.ts";
-import AddPath from "./addpath.ts";
+import AddPathAction from "./add_path.ts";
 import CopyAction from "./copy.ts";
 import ContextMenu from "./context_menu.ts";
 import DefaultPackage from "./defaultPackage.ts";
@@ -17,9 +17,17 @@ import Echo from "./echo.ts";
 import RemoveFromRegistry from './remove_from_registry.ts';
 import SetVarAction from './set_var.ts';
 import AddToStartupAction from './add_to_startup.ts';
+import JsonGet from "./json/json_get.ts";
+import JsonSet from "./json/json_set.ts";
+import JsonRemove from "./json/json_remove.ts";
+import PropertyGetAction from "./property/property_get.ts";
+import BackupFile from "./backup_file.ts";
+import PropertySetAction from "./property/property_set.ts";
+import CheckPort from "./check_port.ts";
+import ShellPath from "./shell_path.ts";
 
 const actionMap = new Map<string, (config: Config) => Action>([
-    ['addPath', (config: Config) => new AddPath(config)],
+    ['addPath', (config: Config) => new AddPathAction(config)],
     ['copy', (config: Config) => new CopyAction(config)],
     ['contextMenu', (config: Config) => new ContextMenu(config)],
     ['defaultPackage', (config: Config) => new DefaultPackage(config)],
@@ -36,6 +44,14 @@ const actionMap = new Map<string, (config: Config) => Action>([
     ['removeFromRegistry', (config: Config) => new RemoveFromRegistry(config.levainRegistry)],
     ['setVar', (config: Config) => new SetVarAction(config)],
     ['addToStartup', (config: Config) => new AddToStartupAction()],
+    ['jsonGet', (config: Config) => new JsonGet(config)],
+    ['jsonSet', (config: Config) => new JsonSet(config)],
+    ['jsonRemove', (config: Config) => new JsonRemove(config)],
+    ['propertyGet', (config: Config) => new PropertyGetAction(config)],
+    ['backupFile', (config: Config) => new BackupFile(config)],
+    ['propertySet', (config: Config) => new PropertySetAction(config)],
+    ['checkPort', (config: Config) => new CheckPort(config)],
+    ['shellPath', (config: Config) => new ShellPath(config)],
 ])
 
 export default class ActionFactory {

@@ -6,6 +6,7 @@ import Command from "./command.ts";
 import Config from "../lib/config.ts";
 import {parseArgs} from "../lib/parse_args.ts";
 import ConsoleAndFileLogger from "../lib/logger/console_and_file_logger.ts";
+import OsUtils from "../lib/os_utils.ts";
 
 export default class CleanCommand implements Command {
 
@@ -61,9 +62,13 @@ export default class CleanCommand implements Command {
 
         log.info(`cleaning tempDir ${tempDir}`)
         for (const dirEntry of Deno.readDirSync(tempDir)) {
-            if (dirEntry.isFile && dirEntry.name.match("^levain-temp-.*")) {
+            if (dirEntry.name.match("^levain-temp-.*")) {
                 this.removeIgnoringErrors(path.resolve(tempDir, dirEntry.name));
-            };
+            } else if (dirEntry.isDirectory && dirEntry.name.match("^levain-.*")) {
+                this.removeIgnoringErrors(path.resolve(tempDir, dirEntry.name));
+            } else if (dirEntry.name.match("^levain$")) {
+                this.removeIgnoringErrors(path.resolve(tempDir, dirEntry.name));
+            }
         }
     }
 
@@ -85,15 +90,17 @@ export default class CleanCommand implements Command {
     }
 
     private getOsTempDir() {
-        return Deno.env.get("TEMP") ?? Deno.env.get("TMPDIR") ?? Deno.env.get("TMP") ?? undefined; 
+        return OsUtils.tempDir;
     }
 
-    private removeIgnoringErrors(file: string) {
-        log.debug(`DEL ${file}`);
+    private removeIgnoringErrors(entryName: string) {
+        log.debug(`DEL ${entryName}`);
         try {
-            Deno.removeSync(file);
+            Deno.removeSync(entryName, { recursive: true });
         } catch (error) {
-            log.debug(`Error ${error} - Ignoring ${file}`);
+            log.debug(`Error ${error} - Ignoring ${entryName}`);
         }
     }
+
+    readonly oneLineExample = "  clean --cache(optional) --backup(optional) --temp(optional) --logs(optional)"
 }

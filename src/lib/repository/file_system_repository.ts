@@ -12,14 +12,22 @@ import AbstractRepository from './abstract_repository.ts';
 export default class FileSystemRepository extends AbstractRepository {
     readonly name;
 
-    readonly excludeDirs = ['.git', 'node_modules', 'npm-cache', '$Recycle.Bin', 'temp', 'tmp']
+    readonly excludeDirs = ['.git', 'node_modules', 'npm-cache', '$Recycle.Bin', 'temp', 'tmp', 'windows', 'system', 'system32']
 
     constructor(
         private config: Config,
         public readonly rootDir: string,
+        private rootOnly: boolean = false
     ) {
         super();
         this.name = `fileSystemRepo for ${this.rootDir}`;
+    }
+
+    async init(): Promise<void> {
+        if (this._packages) {
+            log.debug(`FSRepo: Root=${this.rootDir} - already initialized`);
+            return;
+        }
 
         log.debug(`FSRepo: Root=${this.rootDir}`);
         try {
@@ -69,19 +77,21 @@ export default class FileSystemRepository extends AbstractRepository {
     }
 
     invalidatePackages() {
+        log.debug(`invalidatePackages - ${this.name}`)
         this._packages = undefined
     }
 
-    listPackages(rootDirOnly: boolean = false): Array<FileSystemPackage> {
-        if (!rootDirOnly && this._packages) {
+    listPackages(): Array<FileSystemPackage> {
+        if (this._packages) {
             return this._packages;
         }
+
         if (!existsSync(`${this.rootDir}`)) {
             log.debug(`# listPackages: rootDir not found ${this.rootDir}`);
             return [];
         }
 
-        log.info(`# Scanning ${this.rootDir} - rootDirOnly: ${rootDirOnly}`);
+        log.info(`# Scanning ${this.rootDir} - rootDirOnly: ${this.rootOnly}`);
         log.info(`# Please wait...`);
         const timer = new Timer()
 
@@ -93,7 +103,7 @@ export default class FileSystemRepository extends AbstractRepository {
             exclude: this.excludeDirs,
         }
         log.debug(`# listPackages: ${packagesGlob} ${JSON.stringify(globOptions)}`)
-        const packages: Array<FileSystemPackage> = this.getPackageFiles(packagesGlob, globOptions)
+        const packages: Array<FileSystemPackage> = this.getPackageFiles(packagesGlob, globOptions, this.rootOnly)
 
         log.info("")
         log.info(`added ${packages.length} packages in ${timer.humanize()}`)
@@ -101,53 +111,67 @@ export default class FileSystemRepository extends AbstractRepository {
         return packages;
     }
 
-    private getPackageFiles(packagesGlob: string, globOptions: ExpandGlobOptions): Array<FileSystemPackage> {
+    private getPackageFiles(packagesGlob: string, globOptions: ExpandGlobOptions, rootDirOnly: boolean = false): Array<FileSystemPackage> {
         // FIXME Why, oh my...
         // FIXME globPackages throws error when folder is readonly in Deno 1.5.4
         // if (OsUtils.isWindows()) {
-        return this.crawlPackages(globOptions['root'] || '.', globOptions)
+        return this.crawlPackages(globOptions['root'] || '.', globOptions, rootDirOnly)
         // } else {
         //     return this.globPackages(packagesGlob, globOptions);
         // }
     }
 
-    crawlPackages(dirname: string, options: ExpandGlobOptions, currentLevel = 0): Array<FileSystemPackage> {
+    crawlPackages(dirname: string, options: ExpandGlobOptions, rootDirOnly: boolean = false, currentLevel = 0): Array<FileSystemPackage> {
         const maxLevels = 5
         const nextLevel = currentLevel + 1;
-        let packages: Array<FileSystemPackage> = [];
 
         if (this.excludeDirs.find(ignoreDir => dirname.toLowerCase().endsWith(ignoreDir.toLowerCase()))) {
             log.debug(`ignoring ${dirname}`)
-            return packages;
+            return []
         }
 
         log.debug(`crawlPackages ${dirname}`)
+        if (!FileUtils.canReadSync(dirname)) {
+            log.debug(`not crawling ${dirname}`)
+            return []
+        }
 
-        if (FileUtils.canReadSync(dirname)) {
-            for (const entry of Deno.readDirSync(dirname)) {
-                const fullUri = path.resolve(dirname, entry.name);
-                if (FileUtils.canReadSync(fullUri)) {
-                    if (entry.isDirectory) {
-                        if (currentLevel > maxLevels) {
-                            log.debug(`skipping ${fullUri}, more then ${maxLevels} levels deep`)
-                        } else {
-                            Array.prototype.push.apply(packages, this.crawlPackages(fullUri, options, nextLevel));
-                        }
-                    }
+        let entries = undefined;
+        try {
+            entries = Deno.readDirSync(dirname)
+        } catch (error) {
+            log.debug(`error reading ${dirname} - ${error}`)
+        }
 
-                    if (entry.isFile) {
-                        const pkg = this.readPackage(fullUri);
-                        if (pkg) {
-                            packages.push(pkg);
-                            log.debug(`added package ${entry.name}`)
-                        }
-                    }
+        if (!entries) {
+            log.debug(`not crawling ${dirname}`)
+            return []
+        }
+
+        let packages: Array<FileSystemPackage> = [];
+        for (const entry of entries) {
+            const fullUri = path.resolve(dirname, entry.name);
+            if (!FileUtils.canReadSync(fullUri)) {
+                log.debug(`not crawling ${fullUri}`)
+                continue
+            }
+
+            if (entry.isDirectory && !rootDirOnly) {
+                // User feedback
+                Deno.stdout.writeSync(new TextEncoder().encode("."));
+
+                if (currentLevel > maxLevels) {
+                    log.debug(`skipping ${fullUri}, more then ${maxLevels} levels deep`)
                 } else {
-                    log.debug(`not crawling ${fullUri}`)
+                    Array.prototype.push.apply(packages, this.crawlPackages(fullUri, options, false, nextLevel));
+                }
+            } else if (entry.isFile) {
+                const pkg = this.readPackage(fullUri);
+                if (pkg) {
+                    packages.push(pkg);
+                    log.debug(`added package ${entry.name}`)
                 }
             }
-        } else {
-            log.debug(`not crawling ${dirname}`)
         }
 
         return packages;
@@ -172,13 +196,15 @@ export default class FileSystemRepository extends AbstractRepository {
             return undefined;
         }
 
-        const fileinfo = Deno.lstatSync(yamlFile);
-        if (!fileinfo.isFile) {
-            return undefined;
+        let fileinfo = undefined
+        try {
+            fileinfo = Deno.lstatSync(yamlFile)
+        } catch (error) {
         }
 
-        // User feedback
-        Deno.stdout.writeSync(new TextEncoder().encode("."));
+        if (!fileinfo || !fileinfo.isFile) {
+            return undefined;
+        }
 
         const packageName = yamlFile.replace(/.*[\/|\\]/g, '').replace(/\.levain\.ya?ml/, '')
         log.debug(`readPackage ${packageName} ${yamlFile}`);

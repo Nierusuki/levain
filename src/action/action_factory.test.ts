@@ -4,7 +4,7 @@ import TestHelper from "../lib/test/test_helper.ts";
 import ActionFactory from "./action_factory.ts";
 import {assertArrayContainsInAnyOrder} from "../lib/test/more_asserts.ts";
 
-Deno.test('should list actions', () => {
+Deno.test('ActionFactory should list actions', () => {
     const factory = getActionFactory()
 
     const actions: string[] = factory.list()
@@ -27,6 +27,14 @@ Deno.test('should list actions', () => {
         'removeFromRegistry',
         'setVar',
         'addToStartup',
+        'jsonGet',
+        'jsonSet',
+        'jsonRemove',
+        'propertyGet',
+        'backupFile',
+        'propertySet',
+        'checkPort',
+        'shellPath',
     ])
 })
 Deno.test('should know the assertContains action', () => {

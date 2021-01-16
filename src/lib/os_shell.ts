@@ -19,7 +19,7 @@ export class OsShell {
             throw new Error("No package");
         }
 
-        let pkgs: Package[] | null = this.config.packageManager.resolvePackages(pkgNames, installedOnly);
+        let pkgs: Package[] | null = this.config.packageManager.resolvePackages(pkgNames, installedOnly, false);
         if (!pkgs) {
             throw new Error("Unable to load dependencies for a levain shell. Aborting...");
         }
@@ -72,12 +72,12 @@ export class OsShell {
             return;
         }
 
-        if (!existsSync(`${pkg.baseDir}`)) {
-            return;
-        }
-
         let actions = pkg.yamlItem("cmd.shell");
         let envActions = pkg.yamlItem("cmd.env");
+
+        log.debug(`${pkg.name} SHELL actions: ${JSON.stringify(actions)}`);
+        log.debug(`${pkg.name} ENV   actions: ${JSON.stringify(envActions)}`);
+
         if (envActions) {
             if (actions) {
                 Array.prototype.push.apply(actions, envActions);
@@ -86,6 +86,7 @@ export class OsShell {
             }
         }
 
+        log.debug(`${pkg.name} ALL   actions: ${JSON.stringify(actions)}`);
         if (!actions) {
             return;
         }
@@ -105,7 +106,11 @@ export class OsShell {
 
         let cmd = "";
         if (this.interactive) {
-            cmd = "cmd /c start cmd /u /k prompt [levain]$P$G";
+            if (this.config.shellPath) {
+                cmd = `cmd /c start ${this.config.shellPath}`;
+            } else {
+                cmd = "cmd /c start cmd /u /k prompt [levain]$P$G";
+            }
         } else {
             cmd = "cmd /u /c " + args.join(" ");
         }
@@ -205,6 +210,7 @@ export class OsShell {
             return undefined;
         }
 
+        myPath = [...new Set(myPath)]; // Remove duplicates
         let pathStr = myPath.join(";");
         let envPath = Deno.env.get("PATH");
         if (!envPath) {

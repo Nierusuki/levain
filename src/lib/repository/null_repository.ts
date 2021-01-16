@@ -10,6 +10,12 @@ export default class NullRepository extends AbstractRepository {
         super();
     }
 
+    async init(): Promise<void> {
+    }
+
+    invalidatePackages() {
+    }
+
     get absoluteURI(): string {
         return this.name;
     }
@@ -19,7 +25,7 @@ export default class NullRepository extends AbstractRepository {
         return undefined;
     }
 
-    listPackages(rootDirOnly?: boolean): Array<Package> {
+    listPackages(): Array<Package> {
         return [];
     }
 }

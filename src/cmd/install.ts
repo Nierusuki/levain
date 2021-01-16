@@ -18,16 +18,15 @@ export default class Install implements Command {
     }
 
     async execute(args: string[]) {
-        let pkgNames: string[] = [];
-        if (args && args.length > 0) {
-            pkgNames = args;
-        } else {
-            let curDirPkg = this.config.currentDirPackage;
-            if (curDirPkg) {
-                pkgNames = [curDirPkg.name];
-                log.info(`- Default installation package -> ${JSON.stringify(pkgNames)}`);
+        let pkgNames: string[] = args;
+
+        if (pkgNames.length == 0) {
+            let curDirPkg = this.config.repositoryManager.currentDirPackage
+            if (curDirPkg && curDirPkg.dependencies && curDirPkg.dependencies.length > 0) {
+                pkgNames = curDirPkg.dependencies
             }
         }
+
 
         if (pkgNames.length == 0) {
             throw new Error(`install - Nothing to install. Aborting...`);
@@ -169,4 +168,7 @@ export default class Install implements Command {
         // Or a maximum of N directories
         // Or a combination of both approches
     }
+
+    readonly oneLineExample = "  install <package name>"
+
 }

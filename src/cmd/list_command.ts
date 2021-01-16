@@ -8,7 +8,7 @@ export default class ListCommand implements Command {
     }
 
     execute(args?: string[]): void {
-        const repo = this.config.repository
+        const repo = this.config.repositoryManager.repository
         log.info("");
         log.info("==================================");
         const searchText = args?.join(' ') || '';
@@ -47,4 +47,6 @@ export default class ListCommand implements Command {
     private myPad(text: string | undefined, size: number): string {
         return (text + "" || " ").padEnd(size);
     }
+
+    readonly oneLineExample = "  list <optional search text>"
 }

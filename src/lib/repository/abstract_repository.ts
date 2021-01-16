@@ -1,5 +1,6 @@
 import Repository from './repository.ts';
 import Package from '../package/package.ts';
+import Config from "../config.ts";
 
 export default abstract class AbstractRepository implements Repository {
     abstract name: string;
@@ -7,7 +8,11 @@ export default abstract class AbstractRepository implements Repository {
 
     abstract absoluteURI: string;
 
-    abstract listPackages(rootDirOnly?: boolean): Array<Package>
+    abstract init(): void
+
+    abstract invalidatePackages(): void
+
+    abstract listPackages(): Array<Package>
 
     abstract resolvePackage(packageName: string): Package | undefined
 

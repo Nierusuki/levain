@@ -1,6 +1,6 @@
 import * as log from "https://deno.land/std/log/mod.ts";
 import * as path from "https://deno.land/std/path/mod.ts";
-import {ensureDirSync} from "https://deno.land/std/fs/mod.ts";
+import {ensureDirSync, existsSync} from "https://deno.land/std/fs/mod.ts";
 
 import {homedir} from './utils.ts';
 
@@ -12,71 +12,51 @@ import RepositoryFactory from "./repository/repository_factory.ts";
 import Package from "./package/package.ts";
 import UserInfoUtil from './user_info/userinfo_util.ts';
 import Registry from './repository/registry.ts';
+import OsUtils from './os_utils.ts';
+import RepositoryManager from "./repository/repository_manager.ts";
+import LevainVersion from "../levain_version.ts";
+import FileUtils from '../lib/file_utils.ts';
 
 export default class Config {
     private _pkgManager: PackageManager;
-    private _repository: Repository | undefined;
-    private _installedRepository: Repository | undefined;
+    private _repoManager: RepositoryManager;
+
     private _env: any = {};
     private _context: any = {}; // Do we really need two of them (_env and _context)?
-
-    private _extraRepos: Set<string> = new Set<string>();
 
     public email: string | undefined;
     public fullname: string | undefined;
     private _login: string | undefined;
     private _password: string | undefined;
 
+    private _shellPath: string | undefined;
     private _defaultPackage: string | undefined;
 
-    private savedArgs: any;
-
-    private repoFactory: RepositoryFactory;
     private _registry: Registry | undefined;
 
     private _levainBackupDir: string | undefined;
     private _levainCacheDir: string | undefined;
 
     constructor(args: any) {
-        this.savedArgs = args;
-
-        this.repoFactory = new RepositoryFactory(this);
+        this._pkgManager = new PackageManager(this);
+        this._repoManager = new RepositoryManager(this);
 
         this.configEnv(args);
         this.configHome(args);
+        this.configCache(args);
 
         this.load();
-
-        this._pkgManager = new PackageManager(this);
 
         log.debug("");
         log.debug(`=== Config: \n${JSON.stringify(this._env, null, 3)}`);
     }
 
-    get repository(): Repository {
-        if (!this._repository) {
-            // Lazy loading
-            this._repository = this.configRepo(this.savedArgs, false);
-        }
-
-        return this._repository;
-    }
-
-    set repository(repo: Repository) {
-        this._repository = repo;
-    }
-
-    get repositoryInstalled(): Repository {
-        if (!this._installedRepository) {
-            // Lazy loading
-            this._installedRepository = this.configRepo(this.savedArgs, true);
-        }
-
-        return this._installedRepository;
-    }
-
     get packageManager(): PackageManager {
         return this._pkgManager;
+    }
+
+    get repositoryManager(): RepositoryManager {
+        return this._repoManager;
     }
 
     get levainHome(): string {
@@ -112,7 +92,6 @@ export default class Config {
         return dir;
     }
 
-
     set levainBackupDir(dir: string) {
         this._levainBackupDir = dir
     }
@@ -142,8 +121,34 @@ export default class Config {
         return this._context;
     }
 
+    get shellPath(): string | undefined {
+        if (this._shellPath) {
+            if (!existsSync(this._shellPath)) {
+                log.debug(`Shell path does not exist - ${this._shellPath}`)
+                return undefined
+            }
+    
+            if (!FileUtils.isFile(this._shellPath)) {
+                log.debug(`Shell path must be the executable - ${this._shellPath}`)
+                return undefined
+            }    
+        }
+
+        return this._shellPath
+    }
+
+    set shellPath(shellPath: string | undefined) {
+        log.warning("");
+        log.warning("***********************************************************************************");
+        log.warning(`** Changing shell path: ${shellPath}`);
+        log.warning("***********************************************************************************");
+        log.warning("");
+
+        this._shellPath = shellPath;
+    }
+
     get defaultPackage(): string {
-        return this.currentDirPackage?.name || this._defaultPackage || "levain";
+        return this._defaultPackage || "levain";
     }
 
     set defaultPackage(pkgName: string) {
@@ -156,26 +161,6 @@ export default class Config {
         }
 
         this._defaultPackage = pkgName;
-    }
-
-    get currentDirPackage(): Package | undefined {
-        // Looking for package at current dir
-        let curDirRepo = this.repoFactory.create(Deno.cwd());
-        let pkgs = curDirRepo.listPackages(true);
-        if (pkgs && pkgs.length == 1) {
-            return curDirRepo.resolvePackage(pkgs[0].name);
-        }
-
-        // TODO: Could we provide a default mechanism?
-        if (pkgs && pkgs.length > 1) {
-            log.warning("");
-            log.warning("***********************************************************************************");
-            log.warning(`** Found more than one .levain.yaml file in this folder. Which one should I use? => ${pkgs}`);
-            log.warning("***********************************************************************************");
-            log.warning("");
-        }
-
-        return undefined;
     }
 
     setVar(name: string, value: string): void {
@@ -270,18 +255,17 @@ export default class Config {
         return myText;
     }
 
-    get extraBinDir(): string {
-        return path.resolve(this.levainSrcDir, "extra-bin", Deno.build.os);
-    }
-
     public save(): void {
         let cfg: any = {};
-        cfg.repos = [...this._extraRepos];
+        cfg.repos = this.repositoryManager.saveState;
         cfg.defaultPackage = this._defaultPackage;
+        cfg.cacheDir = this.levainCacheDir;
+        cfg.shellPath = this._shellPath;
 
         let fileName = this.levainConfigFile;
 
         log.info(`SAVE ${fileName}`);
+        log.debug(`${JSON.stringify(cfg, null, 3)}`);
 
         ensureDirSync(this.levainConfigDir)
         Deno.writeTextFileSync(fileName, JSON.stringify(cfg, null, 3));
@@ -303,13 +287,20 @@ export default class Config {
             let cfg = JSON.parse(data);
             log.debug(`- PARSE ${JSON.stringify(cfg)}`);
             if (cfg.repos) {
-                this._extraRepos = new Set<string>(cfg.repos);
-                log.debug(`- REPOS ${this._extraRepos}`);
+                this.repositoryManager.saveState = cfg.repos;
             }
 
             if (cfg.defaultPackage) {
                 this._defaultPackage = cfg.defaultPackage;
                 log.debug(`- DEFAULT-PACKAGE ${this._defaultPackage}`);
+            }
+
+            if (cfg.cacheDir) {
+                this.levainCacheDir = cfg.cacheDir;
+            }
+
+            if (cfg.shellPath) {
+                this._shellPath = cfg.shellPath;
             }
         } catch (err) {
             if (err.name != "NotFound") {
@@ -344,6 +335,12 @@ export default class Config {
         });
     }
 
+    configCache(args: any): void {
+        if (args.levainCache) {
+            this.levainCacheDir = args.levainCache
+        }
+    }
+    
     private configHome(args: any): void {
         delete this._env["levainHome"];
 
@@ -396,73 +393,7 @@ export default class Config {
         }
     }
 
-    configRepo(args: any, installedOnly: boolean): Repository {
-        let repos: Set<string> = new Set<string>();
-
-        log.debug("");
-        log.debug(`=== configRepo - args: ${JSON.stringify(args)} installedOnly: ${installedOnly}`);
-        this.addLevainRepo(repos);
-        this.addCurrentDirRepo(repos);
-
-        if (installedOnly) {
-            this.addLevainRegistryRepo(repos);
-        } else {
-            let savedRepos = [...this._extraRepos];
-            this._extraRepos.clear();
-            log.debug(`savedRepos ${JSON.stringify(savedRepos)}`)
-            this.addRepos(repos, savedRepos);
-            log.debug(`args.addRepo ${JSON.stringify(args.addRepo)}`)
-            this.addRepos(repos, args.addRepo);
-        }
-
-        log.info("");
-        let repoArr: Repository[] = [];
-        repos.forEach(repoPath => repoArr.push(this.repoFactory.create(repoPath)));
-
-        return new CacheRepository(this,
-            new ChainRepository(this, repoArr)
-        );
-    }
-
-    private get levainSrcDir(): string {
-        // https://stackoverflow.com/questions/61829367/node-js-dirname-filename-equivalent-in-deno
-        return path.resolve(path.dirname(path.fromFileUrl(import.meta.url)), "../..");
-    }
-
-    private addLevainRepo(repos: Set<string>) {
-        log.info(`addRepo DEFAULT ${this.levainSrcDir} --> Levain src dir`);
-        repos.add(this.levainSrcDir);
-    }
-
-    private addLevainRegistryRepo(repos: Set<string>) {
-        log.info(`addRepo DEFAULT ${this.levainRegistryDir} --> Levain registry dir`);
-        repos.add(this.levainRegistryDir);
-    }
-
-    private addCurrentDirRepo(repos: Set<string>) {
-        log.info(`addRepo DEFAULT ${Deno.cwd()} --> Current working dir`);
-        repos.add(Deno.cwd());
-    }
-
-    addRepos(repos: Set<string>, reposPath: undefined | string[]) {
-        if (!reposPath) {
-            return;
-        }
-
-        log.debug(`addRepos ${reposPath.length} ${JSON.stringify(reposPath)}`)
-        reposPath?.forEach(repoPath => this.addRepo(repos, repoPath));
-        log.debug(`addRepos after ${reposPath.length}`)
-    }
-
-    addRepo(repos: Set<string>, repoPath: string | undefined) {
-        log.debug(`addRepo ${repoPath}`);
-
-        if (!repoPath || repoPath === 'undefined') {
-            return;
-        }
-
-        log.info(`addRepo ${repoPath}`);
-        repos.add(repoPath);
-        this._extraRepos.add(repoPath);
+    get levainSrcDir(): string {
+        return LevainVersion.levainSrcDir
     }
 }

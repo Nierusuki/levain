@@ -12,23 +12,27 @@ export default class Shell implements Command {
     }
 
     async execute(args: string[]) {
-        let pkgNames: string[] = [];
+        let pkgNames: string[] = args;
 
-        if (args && args.length > 0) {
-            pkgNames = args;
-        } else {
-            pkgNames = [this.config.defaultPackage];
+        if (pkgNames.length == 0) {
+            let curDirPkg = this.config.repositoryManager.currentDirPackage
+            if (curDirPkg && curDirPkg.dependencies && curDirPkg.dependencies.length > 0) {
+                pkgNames = curDirPkg.dependencies
+            } else {
+                pkgNames = [this.config.defaultPackage]
+            }
         }
 
         let pkgs: Package[] | null = this.config.packageManager.resolvePackages(pkgNames);
         if (pkgs) {
             let needInstall = pkgs
-                    .map(pkg => !pkg.installed || pkg.updateAvailable)
-                    .reduce((acc, value) => acc || value);
+                .map(pkg => !pkg.installed || pkg.updateAvailable)
+                .reduce((acc, value) => acc || value);
 
             if (needInstall) {
                 let loader = new Loader(this.config);
                 await loader.command("install", pkgNames);
+                this.config.repositoryManager.invalidatePackages();
             } else {
                 log.debug("No package to install or upgrade");
             }
@@ -39,4 +43,7 @@ export default class Shell implements Command {
 
         await osShell.execute([]);
     }
+
+    readonly oneLineExample = "  shell <optional package name>"
+
 }
