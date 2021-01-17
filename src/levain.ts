@@ -64,7 +64,7 @@ export default class Levain {
             this.logger?.showLogFiles(this.logFiles);
 
             log.info("");
-            log.info(__`Levain ran in ${this.timer.humanize()}`)
+            log.info(__(`Levain ran in ${this.timer.humanize()}`))
             this.logger?.flush()
 
             if (this.error) {
